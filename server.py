@@ -3,9 +3,11 @@ import cv2
 import numpy as np
 import base64
 from flask import Flask, request, jsonify
+from flask_cors import CORS  # ⭐ 新增這一行：引入 CORS 套件
 
 # 初始化 Flask
 app = Flask(__name__)
+CORS(app)  # ⭐ 新增這一行：允許跨網域存取 (解決 Failed to fetch)
 
 # ==========================================
 # ⚙️ 參數設定
@@ -164,3 +166,4 @@ if __name__ == '__main__':
     # 這裡的代碼僅供您在本地電腦測試使用
     port = int(os.environ.get("PORT", 5000))
     app.run(host='0.0.0.0', port=port, debug=True)
+
