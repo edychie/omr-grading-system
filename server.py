@@ -57,11 +57,16 @@ def process_answer_row(thresh_img, anchor, offset, gap, box_s, y_adj):
             continue
         roi = thresh_img[y_a:y_a+box_s, x:x+box_s]
         scores.append(cv2.countNonZero(roi))
+    
     marked_indices = [idx for idx, s in enumerate(scores) if s > PIXEL_THRESHOLD]
     options = ['A', 'B', 'C', 'D']
-    if len(marked_indices) == 0: return "X"
-    elif len(marked_indices) > 1: return "M"
-    else: return options[marked_indices[0]]
+    
+    # === 🛑 這裡改掉：不要回傳 "X" 也不要回傳 "M" ===
+    if len(marked_indices) == 0: 
+        return "" # 沒畫卡回傳空字串
+    else: 
+        # 把所有超過門檻的選項組起來，例如 ['A', 'D'] 變成 "AD"
+        return "".join([options[idx] for idx in marked_indices])
 
 def analyze_paper_simple(image):
     target_size = (2480, 3508)
@@ -86,7 +91,7 @@ def analyze_paper_simple(image):
     c2 = process_info_row(thresh_inv, anchors[2], INFO_X_START, INFO_GAP, INFO_BOX_SIZE, INFO_Y_ADJ)
     s1 = process_info_row(thresh_inv, anchors[3], INFO_X_START, INFO_GAP, INFO_BOX_SIZE, INFO_Y_ADJ)
     s2 = process_info_row(thresh_inv, anchors[4], INFO_X_START, INFO_GAP, INFO_BOX_SIZE, INFO_Y_ADJ)
-
+    
     ans_list = [""] * 60
     for i in range(5, 25):
         ans_list[i-5] = process_answer_row(thresh_inv, anchors[i], L_OFFSET, ANS_GAP, ANS_BOX_SIZE, ANS_Y_ADJ)
@@ -97,9 +102,9 @@ def analyze_paper_simple(image):
         "grade": str(grade),
         "class_name": f"{c1}{c2}",
         "seat": f"{s1}{s2}",
-        "answers": "".join(ans_list)
+        # === 🛑 這裡改掉：直接回傳 ans_list 陣列 ===
+        "answers": ans_list 
     }
-
 # ⭐ 設定 2：手動處理 OPTIONS 請求 (確保萬無一失)
 @app.before_request
 def handle_preflight():
@@ -160,3 +165,4 @@ def process_image():
 if __name__ == '__main__':
     port = int(os.environ.get("PORT", 5000))
     app.run(host='0.0.0.0', port=port)
+
