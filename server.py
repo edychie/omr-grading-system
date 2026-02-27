@@ -1,4 +1,3 @@
-@@ -2,33 +2,34 @@
 import cv2
 import numpy as np
 import base64
@@ -241,3 +240,4 @@ if __name__ == '__main__':
     app.run(host='0.0.0.0', port=port, debug=True)
 
     app.run(host='0.0.0.0', port=port)
+
