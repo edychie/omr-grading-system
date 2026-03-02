@@ -70,25 +70,59 @@ def process_answer_row(thresh_img, anchor, offset, gap, box_s, y_adj):
         return "".join([options[i] for i in marked_indices])
 
 # 1. 修改 analyze_paper_simple 接收參數
+
+
 def analyze_paper_simple(image, custom_params=None, debug_mode=False):
     try:
-        # ... (前面的影像處理代碼) ...
+        # 1. 參數設定：整合預設值與自訂值
+        p = {
+            "L_OFFSET": 282, "M_OFFSET": 1018, "R_OFFSET": 1774,
+            "ANS_GAP": 135, "ANS_BOX_SIZE": 45, "ANS_Y_ADJ": 22,
+            "INFO_X_START": 282, "INFO_GAP": 128, "INFO_Y_ADJ": 12, "INFO_BOX_SIZE": 45
+        }
+        if custom_params and isinstance(custom_params, dict):
+            p.update(custom_params)
+
+        # 這裡放置你原本的影像處理邏輯 (例如 findContours, 找到 anchors 等)
+        # 假設你的定位點變數叫 anchors
+        # anchors = 你的偵測邏輯...
         
-        # 關鍵：檢查是否真的有找到定位點 (假設變數叫 anchors)
-        if not anchors or len(anchors) == 0:
-            return {"status": "error", "msg": "找不到答案卡的定位點，請確保圖片清晰且邊界完整。"}
+        # --- 範例防呆：如果沒偵測到定位點 ---
+        if 'anchors' not in locals() or not anchors:
+            return {"status": "error", "msg": "找不到定位點，請確認圖片亮度與角度"}
 
-        # ... (中間的辨識代碼) ...
-
+        # 2. 如果是「偵測校正」模式 (debug_mode == True)
         if debug_mode:
-            # 產生預覽圖的邏輯
-            return {"status": "success", "debug_image": base64_str}
+            debug_canvas = image.copy()
+            # 在這裡畫上預覽紅框 (範例邏輯)
+            for a in anchors:
+                # 畫出基本資料區框框 (藍色)
+                for j in range(10):
+                    x = a[0] + p["INFO_X_START"] + (j * p["INFO_GAP"])
+                    y = a[1] + p["INFO_Y_ADJ"]
+                    cv2.rectangle(debug_canvas, (x, y), (x + p["INFO_BOX_SIZE"], y + p["INFO_BOX_SIZE"]), (255, 0, 0), 2)
             
-        return {"status": "success", "answers": all_answers, "detected_seat": seat_num, ...}
+            # 將畫好框的圖轉成 Base64
+            _, buffer = cv2.imencode('.jpg', debug_canvas)
+            debug_b64 = base64.b64encode(buffer).decode('utf-8')
+            return {"status": "success", "debug_image": debug_b64}
+
+        # 3. 如果是「正式閱卷」模式
+        # 這裡執行你原本的辨識邏輯，產出 all_answers, seat_num 等
+        all_answers = [] # 你的辨識結果
+        seat_num = "000"  # 你的辨識座號
+        
+        return {
+            "status": "success", 
+            "answers": all_answers, 
+            "detected_grade": "1", 
+            "detected_class": "1", 
+            "detected_seat": seat_num
+        }
 
     except Exception as e:
-        # 如果發生任何未預期的錯誤，也回傳字典
-        return {"status": "error", "msg": str(e)}
+        # 捕捉所有未預期錯誤，避免伺服器崩潰
+        return {"status": "error", "msg": f"辨識過程出錯: {str(e)}"}
         
     def draw_roi(img, anchor, offset, gap, box_s, y_adj, count, color=(0, 255, 0)):
         for i in range(count):
@@ -148,3 +182,4 @@ def process_image():
 
     except Exception as e:
         return jsonify({"status": "error", "msg": f"伺服器內部錯誤: {str(e)}"})
+
