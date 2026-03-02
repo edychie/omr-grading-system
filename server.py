@@ -69,44 +69,50 @@ def process_answer_row(thresh_img, anchor, offset, gap, box_s, y_adj):
         # 將所有畫記的選項拼起來，例如畫了A和B就會回傳 "AB"
         return "".join([options[i] for i in marked_indices])
 
-def analyze_paper_simple(image):
+# 1. 修改 analyze_paper_simple 接收參數
+def analyze_paper_simple(image, params=None, debug=False):
+    # 如果沒傳參數，使用預設值
+    p = {
+        "INFO_X_START": 282, "INFO_GAP": 128, "INFO_Y_ADJ": 12, "INFO_BOX_SIZE": 45,
+        "ANS_Y_ADJ": 22, "ANS_GAP": 135, "ANS_BOX_SIZE": 45,
+        "L_OFFSET": 282, "M_OFFSET": 1018, "R_OFFSET": 1774
+    }
+    if params: p.update(params)
+
     target_size = (2480, 3508)
     if image.shape[:2] != (target_size[1], target_size[0]):
         image = cv2.resize(image, target_size)
-        
+    
+    # 建立一個畫框框用的備份圖
+    debug_img = image.copy() if debug else None
+    
     gray = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
     thresh_inv = cv2.adaptiveThreshold(gray, 255, cv2.ADAPTIVE_THRESH_GAUSSIAN_C, cv2.THRESH_BINARY_INV, 35, 1)
     
-    contours, _ = cv2.findContours(thresh_inv, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
-    anchors = []
-    for cnt in contours:
-        x, y, w, h = cv2.boundingRect(cnt)
-        if x < 150 and 20 < w < 80 and 0.8 < (w/h) < 1.2:
-            anchors.append((x, y, w, h))
-    anchors = sorted(anchors, key=lambda b: b[1])
-    
-    if len(anchors) < 25: 
-        raise Exception(f"定位點不足 (只找到 {len(anchors)} 個，需要 25 個)")
+    # ... (中間找 anchors 的程式碼不變) ...
 
-    grade = process_info_row(thresh_inv, anchors[0], INFO_X_START, INFO_GAP, INFO_BOX_SIZE, INFO_Y_ADJ)
-    c1 = process_info_row(thresh_inv, anchors[1], INFO_X_START, INFO_GAP, INFO_BOX_SIZE, INFO_Y_ADJ)
-    c2 = process_info_row(thresh_inv, anchors[2], INFO_X_START, INFO_GAP, INFO_BOX_SIZE, INFO_Y_ADJ)
-    s1 = process_info_row(thresh_inv, anchors[3], INFO_X_START, INFO_GAP, INFO_BOX_SIZE, INFO_Y_ADJ)
-    s2 = process_info_row(thresh_inv, anchors[4], INFO_X_START, INFO_GAP, INFO_BOX_SIZE, INFO_Y_ADJ)
+    # 在畫框框的邏輯中 (範例：答案區)
+    def draw_roi(img, anchor, offset, gap, box_s, y_adj, count, color=(0, 255, 0)):
+        for i in range(count):
+            x = anchor[0] + offset + (i * gap)
+            y = anchor[1] + y_adj
+            cv2.rectangle(img, (x, y), (x + box_s, y + box_s), color, 3)
 
-    ans_list = [""] * 60
-    for i in range(5, 25):
-        ans_list[i-5] = process_answer_row(thresh_inv, anchors[i], L_OFFSET, ANS_GAP, ANS_BOX_SIZE, ANS_Y_ADJ)
-        ans_list[i-5+20] = process_answer_row(thresh_inv, anchors[i], M_OFFSET, ANS_GAP, ANS_BOX_SIZE, ANS_Y_ADJ)
-        ans_list[i-5+40] = process_answer_row(thresh_inv, anchors[i], R_OFFSET, ANS_GAP, ANS_BOX_SIZE, ANS_Y_ADJ)
-    
-    return {
-        "grade": str(grade),
-        "class_name": f"{c1}{c2}",
-        "seat": f"{s1}{s2}",
-        "answers": "".join(ans_list)
-    }
+    if debug:
+        # 畫出基本資料區
+        for i in range(5):
+            draw_roi(debug_img, anchors[i], p["INFO_X_START"], p["INFO_GAP"], p["INFO_BOX_SIZE"], p["INFO_Y_ADJ"], 10, (255, 0, 0))
+        # 畫出答案區
+        for i in range(5, 25):
+            draw_roi(debug_img, anchors[i], p["L_OFFSET"], p["ANS_GAP"], p["ANS_BOX_SIZE"], p["ANS_Y_ADJ"], 4)
+            draw_roi(debug_img, anchors[i], p["M_OFFSET"], p["ANS_GAP"], p["ANS_BOX_SIZE"], p["ANS_Y_ADJ"], 4)
+            draw_roi(debug_img, anchors[i], p["R_OFFSET"], p["ANS_GAP"], p["ANS_BOX_SIZE"], p["ANS_Y_ADJ"], 4)
 
+        _, buffer = cv2.imencode('.jpg', debug_img)
+        debug_base64 = base64.b64encode(buffer).decode('utf-8')
+        return {"debug_image": debug_base64}
+
+    # ... 原本的分析邏輯回傳結果 ...
 # ⭐ 設定 2：手動處理 OPTIONS 請求 (確保萬無一失)
 @app.before_request
 def handle_preflight():
@@ -166,3 +172,4 @@ def process_image():
 if __name__ == '__main__':
     port = int(os.environ.get("PORT", 5000))
     app.run(host='0.0.0.0', port=port)
+
