@@ -70,28 +70,26 @@ def process_answer_row(thresh_img, anchor, offset, gap, box_s, y_adj):
         return "".join([options[i] for i in marked_indices])
 
 # 1. 修改 analyze_paper_simple 接收參數
-def analyze_paper_simple(image, params=None, debug=False):
-    # 如果沒傳參數，使用預設值
-    p = {
-        "INFO_X_START": 282, "INFO_GAP": 128, "INFO_Y_ADJ": 12, "INFO_BOX_SIZE": 45,
-        "ANS_Y_ADJ": 22, "ANS_GAP": 135, "ANS_BOX_SIZE": 45,
-        "L_OFFSET": 282, "M_OFFSET": 1018, "R_OFFSET": 1774
-    }
-    if params: p.update(params)
+def analyze_paper_simple(image, custom_params=None, debug_mode=False):
+    try:
+        # ... (前面的影像處理代碼) ...
+        
+        # 關鍵：檢查是否真的有找到定位點 (假設變數叫 anchors)
+        if not anchors or len(anchors) == 0:
+            return {"status": "error", "msg": "找不到答案卡的定位點，請確保圖片清晰且邊界完整。"}
 
-    target_size = (2480, 3508)
-    if image.shape[:2] != (target_size[1], target_size[0]):
-        image = cv2.resize(image, target_size)
-    
-    # 建立一個畫框框用的備份圖
-    debug_img = image.copy() if debug else None
-    
-    gray = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
-    thresh_inv = cv2.adaptiveThreshold(gray, 255, cv2.ADAPTIVE_THRESH_GAUSSIAN_C, cv2.THRESH_BINARY_INV, 35, 1)
-    
-    # ... (中間找 anchors 的程式碼不變) ...
+        # ... (中間的辨識代碼) ...
 
-    # 在畫框框的邏輯中 (範例：答案區)
+        if debug_mode:
+            # 產生預覽圖的邏輯
+            return {"status": "success", "debug_image": base64_str}
+            
+        return {"status": "success", "answers": all_answers, "detected_seat": seat_num, ...}
+
+    except Exception as e:
+        # 如果發生任何未預期的錯誤，也回傳字典
+        return {"status": "error", "msg": str(e)}
+        
     def draw_roi(img, anchor, offset, gap, box_s, y_adj, count, color=(0, 255, 0)):
         for i in range(count):
             x = anchor[0] + offset + (i * gap)
@@ -127,49 +125,26 @@ def handle_preflight():
 def process_image():
     try:
         data = request.json
-        if not data:
-            return jsonify({"status": "error", "msg": "沒有收到 JSON 資料"}), 400
-            
-        image_base64 = data.get('image')
-        if not image_base64: 
-            return jsonify({"status": "error", "msg": "沒有收到 image 欄位"}), 400
-        
-        # 處理 Base64 前綴 (如果有)
-        if "," in image_base64:
-            image_base64 = image_base64.split(",")[1]
+        if not data or 'image' not in data:
+            return jsonify({"status": "error", "msg": "沒有收到圖片資料"})
 
-        try:
-            img_data = base64.b64decode(image_base64)
-            np_arr = np.frombuffer(img_data, np.uint8)
-            image = cv2.imdecode(np_arr, cv2.IMREAD_COLOR)
-            if image is None:
-                 return jsonify({"status": "error", "msg": "圖片解碼失敗，可能是格式錯誤"}), 400
-        except Exception as e:
-            return jsonify({"status": "error", "msg": f"Base64 轉換錯誤: {str(e)}"}), 400
-        
-        result = analyze_paper_simple(image)
-        
-        response = jsonify({
-            "status": "success",
-            "answers": result["answers"],
-            "detected_grade": result["grade"],
-            "detected_class": result["class_name"],
-            "detected_seat": result["seat"]
-        })
-        # ⭐ 設定 3：在回應中再次強制加入 Header
-        response.headers.add("Access-Control-Allow-Origin", "*")
-        return response
+        # 1. 取得圖片與參數
+        image_data = data.get('image')
+        custom_params = data.get('params')
+        debug_mode = data.get('debug_mode', False)
+
+        # 2. 解碼圖片
+        img = decode_base64_image(image_data) # 假設你有這個輔助函式
+
+        # 3. 呼叫辨識 (重點在這裡！)
+        result = analyze_paper_simple(img, custom_params, debug_mode)
+
+        # 預防措施：如果 analyze_paper_simple 因為意外回傳了 None
+        if result is None:
+            return jsonify({"status": "error", "msg": "後端處理程序回傳空值(None)"})
+
+        # 4. 回傳結果
+        return jsonify(result)
 
     except Exception as e:
-        # 把詳細錯誤印在 Render Logs 裡
-        print(f"🔥 嚴重錯誤: {e}") 
-        traceback.print_exc()
-        
-        response = jsonify({"status": "error", "msg": f"伺服器內部錯誤: {str(e)}"})
-        response.headers.add("Access-Control-Allow-Origin", "*")
-        return response, 500
-
-if __name__ == '__main__':
-    port = int(os.environ.get("PORT", 5000))
-    app.run(host='0.0.0.0', port=port)
-
+        return jsonify({"status": "error", "msg": f"伺服器內部錯誤: {str(e)}"})
