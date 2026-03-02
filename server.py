@@ -36,6 +36,33 @@ PIXEL_THRESHOLD = 550
 # ==========================================
 # 🧠 核心邏輯
 # ==========================================
+import base64
+import numpy as np
+import cv2
+
+# --- 請把這段完整貼入 ---
+def decode_base64_image(base64_str):
+    """
+    將前端傳來的 Base64 字串轉回 OpenCV 格式的圖片
+    """
+    try:
+        # 如果字串包含 "data:image/jpeg;base64," 標頭，先去掉它
+        if "," in base64_str:
+            base64_str = base64_str.split(",")[1]
+        
+        # 解碼 Base64
+        img_data = base64.b64decode(base64_str)
+        
+        # 轉為 Numpy 陣列
+        nparr = np.frombuffer(img_data, np.uint8)
+        
+        # 用 OpenCV 解碼成圖片格式
+        img = cv2.imdecode(nparr, cv2.IMREAD_COLOR)
+        return img
+    except Exception as e:
+        print(f"解碼圖片失敗: {str(e)}")
+        return None
+        
 def process_info_row(thresh_img, anchor, offset, gap, box_s, y_adj):
     scores = []
     x_start = anchor[0] + offset
@@ -182,4 +209,5 @@ def process_image():
 
     except Exception as e:
         return jsonify({"status": "error", "msg": f"伺服器內部錯誤: {str(e)}"})
+
 
