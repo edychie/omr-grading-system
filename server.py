@@ -18,14 +18,14 @@ app = Flask(__name__)
 CORS(app, resources={r"/*": {"origins": "*"}})
 
 # ==========================================
-# ⚙️ 參數設定 (整合你的絕對像素數值與校正參數)
+# ⚙️ 參數設定 (整合絕對像素數值與校正參數預設值)
 # ==========================================
 DEFAULT_PARAMS = {
     # 影像處理靈敏度
     "PIXEL_THRESHOLD": 550,   # 判斷是否塗黑的像素門檻
     "BINARY_C": 13,           # 局部二值化的常數
     "ANCHOR_THRESH": 200,     # 尋找定位點的二值化門檻
-    "TARGET_WIDTH": 2000,     # 校正後的統一寬度 (確保你的絕對像素對得齊)
+    "TARGET_WIDTH": 2000,     # 校正後的統一寬度 (確保絕對像素對得齊)
 
     # 基本資料區 (絕對像素)
     "INFO_X_START": 282, 
@@ -203,7 +203,7 @@ def process_answer_row(thresh_img, debug_img, anchor, offset, gap, box_s, y_adj,
 
 def analyze_paper_simple(image, custom_params=None, debug_mode=False):
     try:
-        # 1. 參數設定：整合預設值與自訂值
+        # 1. 參數設定：整合預設值與前端傳來的值
         p = DEFAULT_PARAMS.copy()
         if custom_params and isinstance(custom_params, dict):
             p.update(custom_params)
@@ -223,12 +223,12 @@ def analyze_paper_simple(image, custom_params=None, debug_mode=False):
         contours, _ = cv2.findContours(thresh_inv, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
         raw_anchors = get_true_anchor_column(contours, aligned_image.shape[1] // 3)
 
-        # 確保定位點不重複 (Y軸距離大於20才算新的定位點)
+        # 確保定位點不重複 (⭐ Y軸距離改為大於 30 才算新的定位點，避免高解析度誤判)
         anchors = []
         if raw_anchors:
             anchors.append(raw_anchors[0])
             for i in range(1, len(raw_anchors)):
-                if raw_anchors[i][1] - anchors[-1][1] > 20:
+                if raw_anchors[i][1] - anchors[-1][1] > 30:
                     anchors.append(raw_anchors[i])
 
         if len(anchors) < 25:
@@ -329,3 +329,6 @@ def process_image():
 if __name__ == '__main__':
     # 適合直接本地端或部署環境測試執行
     app.run(host='0.0.0.0', port=5000)
+    # 適合直接本地端或部署環境測試執行
+    app.run(host='0.0.0.0', port=5000)
+
