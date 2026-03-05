@@ -242,7 +242,7 @@ def analyze_paper_simple(image, custom_params=None, debug_mode=False):
         s1 = process_info_row(thresh_inv, debug_img, anchors[3], p["INFO_X_START"], p["INFO_GAP"], p["INFO_BOX_SIZE"], p["INFO_Y_ADJ"], p["PIXEL_THRESHOLD"], debug_mode)
         s2 = process_info_row(thresh_inv, debug_img, anchors[4], p["INFO_X_START"], p["INFO_GAP"], p["INFO_BOX_SIZE"], p["INFO_Y_ADJ"], p["PIXEL_THRESHOLD"], debug_mode)
 
-try:
+    try:
         # 6. 辨識答案區 (第6~25個定位點)
         ans_list = [""] * 60
         current_idx = 5
@@ -335,6 +335,7 @@ if __name__ == '__main__':
     app.run(host='0.0.0.0', port=5000)
     # 適合直接本地端或部署環境測試執行
     app.run(host='0.0.0.0', port=5000)
+
 
 
 
