@@ -242,9 +242,9 @@ def analyze_paper_simple(image, custom_params=None, debug_mode=False):
         s1 = process_info_row(thresh_inv, debug_img, anchors[3], p["INFO_X_START"], p["INFO_GAP"], p["INFO_BOX_SIZE"], p["INFO_Y_ADJ"], p["PIXEL_THRESHOLD"], debug_mode)
         s2 = process_info_row(thresh_inv, debug_img, anchors[4], p["INFO_X_START"], p["INFO_GAP"], p["INFO_BOX_SIZE"], p["INFO_Y_ADJ"], p["PIXEL_THRESHOLD"], debug_mode)
 
-    try:
-        # 6. 辨識答案區 (第6~25個定位點)
-        ans_list = [""] * 60
+# 6. 辨識答案區 (第6~25個定位點)
+        # 直接建立好 60 個預設為 "X" 的最終陣列
+        clean_ans_list = ["X"] * 60  
         current_idx = 5
         
         for i in range(20):
@@ -252,34 +252,28 @@ def analyze_paper_simple(image, custom_params=None, debug_mode=False):
             anchor = anchors[current_idx]
             current_idx += 1
 
-            # 左邊 (題號 1~20)
-            ans_list[i] = process_answer_row(thresh_inv, debug_img, anchor, p["L_OFFSET"], p["ANS_GAP"], p["ANS_BOX_SIZE"], p["ANS_Y_ADJ"], p["PIXEL_THRESHOLD"], debug_mode)
-            # 中間 (題號 21~40)
-            ans_list[i + 20] = process_answer_row(thresh_inv, debug_img, anchor, p["M_OFFSET"], p["ANS_GAP"], p["ANS_BOX_SIZE"], p["ANS_Y_ADJ"], p["PIXEL_THRESHOLD"], debug_mode)
-            # 右邊 (題號 41~60)
-            ans_list[i + 40] = process_answer_row(thresh_inv, debug_img, anchor, p["R_OFFSET"], p["ANS_GAP"], p["ANS_BOX_SIZE"], p["ANS_Y_ADJ"], p["PIXEL_THRESHOLD"], debug_mode)
+            # 直接把辨識結果寫入對應的題號位置，省去後續的清洗步驟！
+            clean_ans_list[i]      = process_answer_row(thresh_inv, debug_img, anchor, p["L_OFFSET"], p["ANS_GAP"], p["ANS_BOX_SIZE"], p["ANS_Y_ADJ"], p["PIXEL_THRESHOLD"], debug_mode)
+            clean_ans_list[i + 20] = process_answer_row(thresh_inv, debug_img, anchor, p["M_OFFSET"], p["ANS_GAP"], p["ANS_BOX_SIZE"], p["ANS_Y_ADJ"], p["PIXEL_THRESHOLD"], debug_mode)
+            clean_ans_list[i + 40] = process_answer_row(thresh_inv, debug_img, anchor, p["R_OFFSET"], p["ANS_GAP"], p["ANS_BOX_SIZE"], p["ANS_Y_ADJ"], p["PIXEL_THRESHOLD"], debug_mode)
 
-        # 7. 清洗答案並組織回傳結果 (過濾掉 ABCDX 以外的符號，並轉成陣列)
-        clean_ans_list = []
-        for ans in ans_list:
-            # 使用正則表達式，只保留 A, B, C, D, X，刪除其他任何雜訊
-            clean_ans = re.sub(r'[^ABCDX]', '', str(ans).upper())
-            
-            # 如果清洗完畢後變成空字串 (代表沒讀到合法答案)，預設給 'X'
-            if not clean_ans: 
-                clean_ans = "X" 
-                
-            clean_ans_list.append(clean_ans)
+        # 🚀 第 7 步 (正則表達式清洗那段) 已經完全不需要，可以直接刪除！
 
+        # 📸 儲存偵錯圖片 (保持不變)
+        if debug_mode:
+            cv2.imwrite("debug_output.jpg", debug_img)
+            logging.info("已儲存 debug_output.jpg！")
+
+        # 準備回傳資料 (記得這裡不要加 jsonify 哦！)
         response_data = {
             "status": "success", 
-            "answers": clean_ans_list,  # 這裡直接回傳 Python List (傳到前端會變 Array)
+            "answers": clean_ans_list, 
             "detected_grade": grade, 
             "detected_class": f"{c1}{c2}", 
             "detected_seat": f"{s1}{s2}"
         }
         
-        return jsonify(response_data)
+        return response_data
 
     # 👇 就是這裡！如果你寫了 try:，最下面一定要有這個 except 區塊來捕捉錯誤
     except Exception as e:
@@ -335,6 +329,7 @@ if __name__ == '__main__':
     app.run(host='0.0.0.0', port=5000)
     # 適合直接本地端或部署環境測試執行
     app.run(host='0.0.0.0', port=5000)
+
 
 
 
