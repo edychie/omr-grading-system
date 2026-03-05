@@ -1,3 +1,4 @@
+import re
 import os
 import cv2
 import numpy as np
@@ -257,10 +258,18 @@ def analyze_paper_simple(image, custom_params=None, debug_mode=False):
             # 右邊 (題號 41~60)
             ans_list[i + 40] = process_answer_row(thresh_inv, debug_img, anchor, p["R_OFFSET"], p["ANS_GAP"], p["ANS_BOX_SIZE"], p["ANS_Y_ADJ"], p["PIXEL_THRESHOLD"], debug_mode)
 
-        # 7. 組織回傳結果
+clean_ans_list = []
+        for ans in ans_list:
+            # 只保留 A, B, C, D, X，將其他符號(如 ? 或空白)刪除
+            clean_ans = re.sub(r'[^ABCDX]', '', str(ans).upper())
+            # 如果清洗後變成空的(代表沒讀到合法答案)，預設給 'X' 或保持空字串 ""
+            if not clean_ans: 
+                clean_ans = "X" 
+            clean_ans_list.append(clean_ans)
+
         response_data = {
             "status": "success", 
-            "answers": "".join(ans_list), 
+            "answers": clean_ans_list,  # 這裡直接回傳陣列 (List)，不要用 join
             "detected_grade": grade, 
             "detected_class": f"{c1}{c2}", 
             "detected_seat": f"{s1}{s2}"
@@ -331,6 +340,7 @@ if __name__ == '__main__':
     app.run(host='0.0.0.0', port=5000)
     # 適合直接本地端或部署環境測試執行
     app.run(host='0.0.0.0', port=5000)
+
 
 
 
