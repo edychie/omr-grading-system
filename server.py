@@ -242,6 +242,7 @@ def analyze_paper_simple(image, custom_params=None, debug_mode=False):
         s1 = process_info_row(thresh_inv, debug_img, anchors[3], p["INFO_X_START"], p["INFO_GAP"], p["INFO_BOX_SIZE"], p["INFO_Y_ADJ"], p["PIXEL_THRESHOLD"], debug_mode)
         s2 = process_info_row(thresh_inv, debug_img, anchors[4], p["INFO_X_START"], p["INFO_GAP"], p["INFO_BOX_SIZE"], p["INFO_Y_ADJ"], p["PIXEL_THRESHOLD"], debug_mode)
 
+try:
         # 6. 辨識答案區 (第6~25個定位點)
         ans_list = [""] * 60
         current_idx = 5
@@ -258,37 +259,31 @@ def analyze_paper_simple(image, custom_params=None, debug_mode=False):
             # 右邊 (題號 41~60)
             ans_list[i + 40] = process_answer_row(thresh_inv, debug_img, anchor, p["R_OFFSET"], p["ANS_GAP"], p["ANS_BOX_SIZE"], p["ANS_Y_ADJ"], p["PIXEL_THRESHOLD"], debug_mode)
 
-clean_ans_list = []
+        # 7. 清洗答案並組織回傳結果 (過濾掉 ABCDX 以外的符號，並轉成陣列)
+        clean_ans_list = []
         for ans in ans_list:
-            # 只保留 A, B, C, D, X，將其他符號(如 ? 或空白)刪除
+            # 使用正則表達式，只保留 A, B, C, D, X，刪除其他任何雜訊
             clean_ans = re.sub(r'[^ABCDX]', '', str(ans).upper())
-            # 如果清洗後變成空的(代表沒讀到合法答案)，預設給 'X' 或保持空字串 ""
+            
+            # 如果清洗完畢後變成空字串 (代表沒讀到合法答案)，預設給 'X'
             if not clean_ans: 
                 clean_ans = "X" 
+                
             clean_ans_list.append(clean_ans)
 
         response_data = {
             "status": "success", 
-            "answers": clean_ans_list,  # 這裡直接回傳陣列 (List)，不要用 join
+            "answers": clean_ans_list,  # 這裡直接回傳 Python List (傳到前端會變 Array)
             "detected_grade": grade, 
             "detected_class": f"{c1}{c2}", 
             "detected_seat": f"{s1}{s2}"
         }
+        
+        return jsonify(response_data)
 
-        # 8. 如果是「偵測校正模式」，附上 Base64 預覽圖
-        if debug_mode and debug_img is not None:
-            # 畫出定位點紅框示意
-            for a in anchors:
-                cv2.rectangle(debug_img, (a[0], a[1]), (a[0]+a[2], a[1]+a[3]), (0, 0, 255), 2)
-                
-            _, buffer = cv2.imencode('.jpg', debug_img)
-            debug_b64 = base64.b64encode(buffer).decode('utf-8')
-            response_data["debug_image"] = debug_b64
-
-        return response_data
-
+    # 👇 就是這裡！如果你寫了 try:，最下面一定要有這個 except 區塊來捕捉錯誤
     except Exception as e:
-        traceback.print_exc()
+        return jsonify({"status": "error", "msg": str(e)})
         return {"status": "error", "msg": f"辨識過程出錯: {str(e)}"}
 
 # ==========================================
@@ -340,6 +335,7 @@ if __name__ == '__main__':
     app.run(host='0.0.0.0', port=5000)
     # 適合直接本地端或部署環境測試執行
     app.run(host='0.0.0.0', port=5000)
+
 
 
 
