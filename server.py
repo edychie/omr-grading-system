@@ -19,7 +19,7 @@ app = Flask(__name__)
 CORS(app, resources={r"/*": {"origins": "*"}})
 
 # ==========================================
-# ⚙️ 參數設定 (整合絕對像素數值與校正參數預設值)
+# ⚙️ 參數設定 (整合絕對像素數值與校正參數預設值) - 保持不動
 # ==========================================
 DEFAULT_PARAMS = {
     # 影像處理靈敏度
@@ -81,65 +81,43 @@ def get_true_anchor_column(contours, max_x):
     # 依照 Y 座標由上到下排序
     return sorted(true_anchors, key=lambda b: b[1])
 
+# ⭐⭐ 修改區塊塊開始：依照您的新版邏輯進行垂直校正與全圖縮放 ⭐⭐
 def auto_align_and_crop(image, p):
-    """自動旋轉校正、邊界偵測與裁切縮放"""
+    """自動旋轉校正與等比例縮放 (保留完整卷面)"""
     h_raw, w_raw = image.shape[:2]
 
-    # --- 步驟 1: 旋轉校正 ---
+    # --- 步驟 1: 尋找定位點與旋轉校正 ---
     gray = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
     _, thresh = cv2.threshold(gray, p["ANCHOR_THRESH"], 255, cv2.THRESH_BINARY_INV)
     contours, _ = cv2.findContours(thresh, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
 
     true_anchors = get_true_anchor_column(contours, w_raw // 2)
 
-    if len(true_anchors) >= 5:
-        points = np.array([[a[0] + a[2]//2, a[1] + a[3]//2] for a in true_anchors])
-        [vx, vy, fit_x, fit_y] = cv2.fitLine(points, cv2.DIST_L2, 0, 0.01, 0.01)
+    if len(true_anchors) >= 2:
+        # 取得最上方與最下方的定位點中心點座標
+        top_p = (true_anchors[0][0] + true_anchors[0][2]//2, true_anchors[0][1] + true_anchors[0][3]//2)
+        bot_p = (true_anchors[-1][0] + true_anchors[-1][2]//2, true_anchors[-1][1] + true_anchors[-1][3]//2)
 
-        angle = math.degrees(math.atan2(float(vy[0]), float(vx[0])))
-        correction_angle = 90 - angle
-        if correction_angle > 45: correction_angle -= 180
-        if correction_angle < -45: correction_angle += 180
+        # 計算偏差量與旋轉角度
+        dx = bot_p[0] - top_p[0]
+        dy = bot_p[1] - top_p[1]
+        angle = math.degrees(math.atan2(dx, dy))
 
-        if 0.1 < abs(correction_angle) < 15:
-            center = (w_raw // 2, h_raw // 2)
-            M = cv2.getRotationMatrix2D(center, -correction_angle, 1.0)
-            cos = np.abs(M[0, 0]); sin = np.abs(M[0, 1])
-            new_w = int((h_raw * sin) + (w_raw * cos))
-            new_h = int((h_raw * cos) + (w_raw * sin))
-            M[0, 2] += (new_w / 2) - center[0]
-            M[1, 2] += (new_h / 2) - center[1]
-            image = cv2.warpAffine(image, M, (new_w, new_h), flags=cv2.INTER_LANCZOS4, borderMode=cv2.BORDER_CONSTANT, borderValue=(255, 255, 255))
+        # 強制旋轉對齊垂直線
+        M = cv2.getRotationMatrix2D(top_p, -angle, 1.0)
+        image = cv2.warpAffine(image, M, (w_raw, h_raw), flags=cv2.INTER_LANCZOS4, borderMode=cv2.BORDER_CONSTANT, borderValue=(255, 255, 255))
+        logging.info(f"偵測偏差 {dx} 像素，已強制旋轉 {angle:.4f} 度對齊垂直線")
 
-    # --- 步驟 2: 邊界尋找與強制縮放至 TARGET_WIDTH ---
-    gray_r = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
-    _, thresh_r = cv2.threshold(gray_r, p["ANCHOR_THRESH"], 255, cv2.THRESH_BINARY_INV)
-    contours_r, _ = cv2.findContours(thresh_r, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
-
-    final_anchors = get_true_anchor_column(contours_r, image.shape[1] // 2)
-
-    if len(final_anchors) >= 5:
-        column_x = int(np.median([a[0] for a in final_anchors]))
-        first_anchor_y = final_anchors[0][1]
-
-        start_x = max(0, column_x - 50)
-        start_y = max(0, first_anchor_y - 50)
-
-        # 鎖定裁切寬度 (固定比例，讓絕對偏移量可以準確對應)
-        FIXED_CROP_WIDTH = 1850 
-        end_x = min(image.shape[1], start_x + FIXED_CROP_WIDTH)
-        end_y = image.shape[0]
-
-        cropped_img = image[start_y:end_y, start_x:end_x]
-        
-        # 強制縮放寬度至目標設定值 (例如 2000)，高度等比
-        h_crop, w_crop = cropped_img.shape[:2]
-        if h_crop > 0 and w_crop > 0:
-            scale = p["TARGET_WIDTH"] / float(w_crop)
-            final_h = int(h_crop * scale)
-            image = cv2.resize(cropped_img, (p["TARGET_WIDTH"], final_h), interpolation=cv2.INTER_LANCZOS4)
+    # --- 步驟 2: 重新計算縮放 (固定縮放標準，無視定位點偏移) ---
+    # 直接用「整張圖片的原始寬度」來作為縮放基準
+    h, w = image.shape[:2]
+    scale = p["TARGET_WIDTH"] / float(w)
+    new_w = p["TARGET_WIDTH"]
+    new_h = int(h * scale)
+    image = cv2.resize(image, (new_w, new_h), interpolation=cv2.INTER_LANCZOS4)
 
     return image
+# ⭐⭐ 修改區塊塊結束 ⭐⭐
 
 def process_info_row(thresh_img, debug_img, anchor, offset, gap, box_s, y_adj, p_thresh, debug_mode):
     """處理基本資料列 (年級、班級、座號)"""
@@ -209,7 +187,7 @@ def analyze_paper_simple(image, custom_params=None, debug_mode=False):
         if custom_params and isinstance(custom_params, dict):
             p.update(custom_params)
 
-        # 2. 自動校正與裁切
+        # 2. 自動校正與縮放 (已修改為新邏輯)
         aligned_image = auto_align_and_crop(image, p)
         debug_img = aligned_image.copy() if debug_mode else None
 
@@ -242,8 +220,7 @@ def analyze_paper_simple(image, custom_params=None, debug_mode=False):
         s1 = process_info_row(thresh_inv, debug_img, anchors[3], p["INFO_X_START"], p["INFO_GAP"], p["INFO_BOX_SIZE"], p["INFO_Y_ADJ"], p["PIXEL_THRESHOLD"], debug_mode)
         s2 = process_info_row(thresh_inv, debug_img, anchors[4], p["INFO_X_START"], p["INFO_GAP"], p["INFO_BOX_SIZE"], p["INFO_Y_ADJ"], p["PIXEL_THRESHOLD"], debug_mode)
 
-# 6. 辨識答案區 (第6~25個定位點)
-        # 直接建立好 60 個預設為 "X" 的最終陣列
+        # 6. 辨識答案區 (第6~25個定位點)
         clean_ans_list = ["X"] * 60  
         current_idx = 5
         
@@ -252,19 +229,17 @@ def analyze_paper_simple(image, custom_params=None, debug_mode=False):
             anchor = anchors[current_idx]
             current_idx += 1
 
-            # 直接把辨識結果寫入對應的題號位置，省去後續的清洗步驟！
+            # 直接把辨識結果寫入對應的題號位置
             clean_ans_list[i]      = process_answer_row(thresh_inv, debug_img, anchor, p["L_OFFSET"], p["ANS_GAP"], p["ANS_BOX_SIZE"], p["ANS_Y_ADJ"], p["PIXEL_THRESHOLD"], debug_mode)
             clean_ans_list[i + 20] = process_answer_row(thresh_inv, debug_img, anchor, p["M_OFFSET"], p["ANS_GAP"], p["ANS_BOX_SIZE"], p["ANS_Y_ADJ"], p["PIXEL_THRESHOLD"], debug_mode)
             clean_ans_list[i + 40] = process_answer_row(thresh_inv, debug_img, anchor, p["R_OFFSET"], p["ANS_GAP"], p["ANS_BOX_SIZE"], p["ANS_Y_ADJ"], p["PIXEL_THRESHOLD"], debug_mode)
 
-        # 🚀 第 7 步 (正則表達式清洗那段) 已經完全不需要，可以直接刪除！
-
-        # 📸 儲存偵錯圖片 (保持不變)
+        # 📸 儲存偵錯圖片
         if debug_mode:
             cv2.imwrite("debug_output.jpg", debug_img)
             logging.info("已儲存 debug_output.jpg！")
 
-        # 準備回傳資料 (記得這裡不要加 jsonify 哦！)
+        # 準備回傳資料
         response_data = {
             "status": "success", 
             "answers": clean_ans_list, 
@@ -275,9 +250,7 @@ def analyze_paper_simple(image, custom_params=None, debug_mode=False):
         
         return response_data
 
-    # 👇 就是這裡！如果你寫了 try:，最下面一定要有這個 except 區塊來捕捉錯誤
     except Exception as e:
-        return jsonify({"status": "error", "msg": str(e)})
         return {"status": "error", "msg": f"辨識過程出錯: {str(e)}"}
 
 # ==========================================
@@ -327,15 +300,3 @@ def process_image():
 if __name__ == '__main__':
     # 適合直接本地端或部署環境測試執行
     app.run(host='0.0.0.0', port=5000)
-    # 適合直接本地端或部署環境測試執行
-    app.run(host='0.0.0.0', port=5000)
-
-
-
-
-
-
-
-
-
-
