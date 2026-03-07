@@ -23,7 +23,7 @@ CORS(app, resources={r"/*": {"origins": "*"}})
 # ==========================================
 DEFAULT_PARAMS = {
     # 影像處理靈敏度
-    "PIXEL_THRESHOLD": 330,   # 判斷是否塗黑的像素門檻
+    "PIXEL_THRESHOLD": 200,   # 判斷是否塗黑的像素門檻
     "BINARY_C": 11,           # 局部二值化的常數
     "ANCHOR_THRESH": 200,     # 尋找定位點的二值化門檻
     "TARGET_WIDTH": 2000,     # 校正後的統一寬度 (確保絕對像素對得齊)
@@ -392,4 +392,5 @@ def process_image():
 if __name__ == '__main__':
     # 適合直接本地端或部署環境測試執行
     app.run(host='0.0.0.0', port=5000)
+
 
