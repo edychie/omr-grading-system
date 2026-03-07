@@ -175,7 +175,70 @@ def process_answer_row(thresh_img, debug_img, anchor, offset, gap, box_s, y_adj,
         cv2.putText(debug_img, ans, (x_a + offset - 40, y_a + 30), cv2.FONT_HERSHEY_SIMPLEX, 0.8, (255, 0, 0), 2)
         
     return ans
+# ==========================================
+# 👁️ 預覽專用功能 (繪製偵測框並回傳 Base64)
+# ==========================================
+def generate_preview_image(image, custom_params=None):
+    try:
+        p = DEFAULT_PARAMS.copy()
+        if custom_params and isinstance(custom_params, dict):
+            p.update(custom_params)
 
+        # 1. 自動校正與裁切
+        aligned_image = auto_align_and_crop(image, p)
+        debug_img = aligned_image.copy()
+
+        # 2. 灰階與自適應二值化
+        gray = cv2.cvtColor(aligned_image, cv2.COLOR_BGR2GRAY)
+        thresh_inv = cv2.adaptiveThreshold(
+            gray, 255, cv2.ADAPTIVE_THRESH_GAUSSIAN_C,
+            cv2.THRESH_BINARY_INV, 75, p["BINARY_C"]
+        )
+
+        # 3. 尋找定位點
+        contours, _ = cv2.findContours(thresh_inv, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+        raw_anchors = get_true_anchor_column(contours, aligned_image.shape[1] // 3)
+
+        anchors = []
+        if raw_anchors:
+            anchors.append(raw_anchors[0])
+            for i in range(1, len(raw_anchors)):
+                if raw_anchors[i][1] - anchors[-1][1] > 30:
+                    anchors.append(raw_anchors[i])
+
+        if len(anchors) < 25:
+            return {"status": "error", "msg": f"定位點不足，無法產生預覽圖 (找到 {len(anchors)} 個)"}
+
+        # ⭐ 畫出找到的「黑色定位點」(藍色框，方便確認系統有沒有抓錯基準線)
+        for a in anchors:
+            cv2.rectangle(debug_img, (a[0], a[1]), (a[0]+a[2], a[1]+a[3]), (255, 0, 0), 3)
+
+        # 4. 畫基本資料區的框 (強制傳入 debug_mode=True 讓函式畫框)
+        process_info_row(thresh_inv, debug_img, anchors[0], p["INFO_X_START"], p["INFO_GAP"], p["INFO_BOX_SIZE"], p["INFO_Y_ADJ"], p["PIXEL_THRESHOLD"], True)
+        process_info_row(thresh_inv, debug_img, anchors[1], p["INFO_X_START"], p["INFO_GAP"], p["INFO_BOX_SIZE"], p["INFO_Y_ADJ"], p["PIXEL_THRESHOLD"], True)
+        process_info_row(thresh_inv, debug_img, anchors[2], p["INFO_X_START"], p["INFO_GAP"], p["INFO_BOX_SIZE"], p["INFO_Y_ADJ"], p["PIXEL_THRESHOLD"], True)
+        process_info_row(thresh_inv, debug_img, anchors[3], p["INFO_X_START"], p["INFO_GAP"], p["INFO_BOX_SIZE"], p["INFO_Y_ADJ"], p["PIXEL_THRESHOLD"], True)
+        process_info_row(thresh_inv, debug_img, anchors[4], p["INFO_X_START"], p["INFO_GAP"], p["INFO_BOX_SIZE"], p["INFO_Y_ADJ"], p["PIXEL_THRESHOLD"], True)
+
+        # 5. 畫作答區的框
+        current_idx = 5
+        for i in range(20):
+            if current_idx >= len(anchors): break
+            anchor = anchors[current_idx]
+            current_idx += 1
+
+            process_answer_row(thresh_inv, debug_img, anchor, p["L_OFFSET"], p["ANS_GAP"], p["ANS_BOX_SIZE"], p["ANS_Y_ADJ"], p["PIXEL_THRESHOLD"], True)
+            process_answer_row(thresh_inv, debug_img, anchor, p["M_OFFSET"], p["ANS_GAP"], p["ANS_BOX_SIZE"], p["ANS_Y_ADJ"], p["PIXEL_THRESHOLD"], True)
+            process_answer_row(thresh_inv, debug_img, anchor, p["R_OFFSET"], p["ANS_GAP"], p["ANS_BOX_SIZE"], p["ANS_Y_ADJ"], p["PIXEL_THRESHOLD"], True)
+
+        # 6. 將畫好框的 OpenCV 圖片壓縮並轉回 Base64 格式
+        _, buffer = cv2.imencode('.jpg', debug_img, [int(cv2.IMWRITE_JPEG_QUALITY), 80])
+        img_base64 = base64.b64encode(buffer).decode('utf-8')
+
+        return {"status": "success", "image": img_base64}
+    
+    except Exception as e:
+        return {"status": "error", "msg": f"預覽繪製失敗: {str(e)}"}
 # ==========================================
 # 🚀 核心辨識主程式
 # ==========================================
@@ -268,6 +331,35 @@ def handle_preflight():
         return response
 
 @app.route('/process_image', methods=['POST'])
+@app.route('/preview', methods=['POST'])
+def preview():
+    try:
+        data = request.json
+        if not data or 'image' not in data:
+            return jsonify({"status": "error", "msg": "沒有收到圖片資料"})
+
+        # 1. 取得圖片與即時參數
+        image_data = data.get('image')
+        custom_params = data.get('params')
+
+        # 2. 解碼圖片
+        img = decode_base64_image(image_data)
+        if img is None:
+            return jsonify({"status": "error", "msg": "圖片解碼失敗，請確認 Base64 格式"})
+
+        # 3. 呼叫產生預覽圖函式
+        result = generate_preview_image(img, custom_params)
+
+        if result is None:
+            return jsonify({"status": "error", "msg": "預覽圖生成回傳空值(None)"})
+
+        # 4. 回傳前端
+        return jsonify(result)
+
+    except Exception as e:
+        traceback.print_exc()
+        return jsonify({"status": "error", "msg": f"伺服器內部錯誤: {str(e)}"})
+        
 def process_image():
     try:
         data = request.json
@@ -300,3 +392,4 @@ def process_image():
 if __name__ == '__main__':
     # 適合直接本地端或部署環境測試執行
     app.run(host='0.0.0.0', port=5000)
+
