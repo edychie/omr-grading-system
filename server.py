@@ -330,7 +330,7 @@ def handle_preflight():
         response.headers.add("Access-Control-Allow-Methods", "*")
         return response
 
-@app.route('/process_image', methods=['POST'])
+
 @app.route('/preview', methods=['POST'])
 def preview():
     try:
@@ -360,6 +360,7 @@ def preview():
         traceback.print_exc()
         return jsonify({"status": "error", "msg": f"伺服器內部錯誤: {str(e)}"})
         
+@app.route('/process_image', methods=['POST'])
 def process_image():
     try:
         data = request.json
@@ -392,5 +393,6 @@ def process_image():
 if __name__ == '__main__':
     # 適合直接本地端或部署環境測試執行
     app.run(host='0.0.0.0', port=5000)
+
 
 
